@@ -4,101 +4,258 @@
   <meta charset="utf-8"/>
   <title>Ranking interactivo - Polla 2026</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <!-- Google Charts Loader -->
+  <!-- Cargador de Google Charts (Visualization API) -->
   <script src="https://www.gstatic.com/charts/loader.js"></script>
   <style>
-    :root { --bg:#0b1d3a; --card:#10264b; --txt:#e7eefc; --acc:#23c4ff; }
-    html, body { height:100%; margin:0; background:#07152b; color:var(--txt);
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial; }
-    header { padding:16px; background:var(--bg); border-bottom:1px solid rgba(255,255,255,.08); }
-    header h1 { margin:0; font-size:18px; letter-spacing:.2px; }
-    .wrap { max-width:1200px; margin:0 auto; padding:16px; }
-    .panel { background:var(--card); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:12px; }
-    .filters { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-bottom:12px; }
-    .filters .block { min-width:260px; background:#0c1f3f; border-radius:8px; padding:8px; border:1px solid rgba(255,255,255,.06); }
-    .hint { font-size:12px; opacity:.75; margin:4px 0 0 2px; }
-    /* Tabla ocupa alto disponible */
-    #tbl { height: 70vh; min-height: 420px; }
-    a.btn { display:inline-block; padding:8px 12px; border-radius:8px; background:var(--acc); color:#001018; font-weight:600; text-decoration:none; }
+    /* ====== Tema claro / tipografía ====== */
+    :root{
+      --bg:#f5f7fb; --card:#ffffff; --ink:#111827;
+      --grid:#e5e7eb; --head:#eef2ff; --head2:#dbeafe;
+      --col1w:72px; --col2w:280px; --col3w:120px; /* Ajusta estos widths si lo necesitas */
+      --headRow1H: 36px; /* se recalcula tras render */
+      --headRow2H: 36px; /* se recalcula tras render */
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);
+      font: 14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;}
+    header{padding:14px 16px;background:#fff;border-bottom:1px solid var(--grid)}
+    h1{margin:0;font-size:18px}
+    .wrap{max-width:1200px;margin:0 auto;padding:16px}
+    .panel{background:var(--card);border:1px solid var(--grid);border-radius:12px;padding:12px}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+    .toolbar .field{display:flex;gap:8px;align-items:center;background:#f3f4f6;border:1px solid var(--grid);border-radius:10px;padding:6px 8px}
+    .toolbar input,.toolbar select{border:1px solid var(--grid);background:#fff;border-radius:8px;padding:6px 8px;color:var(--ink)}
+    .toolbar button{border:0;background:#0ea5e9;color:#001018;padding:8px 10px;border-radius:8px;font-weight:600;cursor:pointer}
+    /* ====== Tabla con “inmovilizador” por CSS sticky ====== */
+    .table-wrap{max-height:75vh;min-height:420px;overflow:auto;border:1px solid var(--grid);border-radius:10px}
+    table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
+    th,td{border-right:1px solid var(--grid);border-bottom:1px solid var(--grid);padding:6px 8px;background:#fff;color:var(--ink);white-space:nowrap}
+    thead th{position:sticky;z-index:3;background:var(--head)}
+    thead tr:nth-child(1) th{top:0;height:var(--headRow1H);background:var(--head2);font-weight:700}
+    thead tr:nth-child(2) th{top:var(--headRow1H);height:var(--headRow2H);font-weight:700}
+    /* Alternancia de filas de datos */
+    tbody tr:nth-child(odd) td{background:#fafafa}
+    /* Columnas “congeladas” (1–3) */
+    .sticky-1{position:sticky;left:0;z-index:2;background:#fff}
+    .sticky-2{position:sticky;left:var(--col1w);z-index:2;background:#fff}
+    .sticky-3{position:sticky;left:calc(var(--col1w) + var(--col2w));z-index:2;background:#fff}
+    /* Ajuste de widths fijos para las 3 primeras columnas */
+    .w-col1{min-width:var(--col1w);width:var(--col1w)}
+    .w-col2{min-width:var(--col2w);width:var(--col2w)}
+    .w-col3{min-width:var(--col3w);width:var(--col3w)}
+    .muted{font-size:12px;opacity:.75;margin:8px 2px 0}
   </style>
+
   <script>
-    // === Config de tu hoja ===
+    // ====== Config específica de tu hoja ======
     const SHEET_ID = '1jIAWPSvoUZom0e2kLc3gEtaEAbW_I_bRmAeWn2n-5LI';
-    const GID = '0';          // pestaña principal
-    const RANGE_A1 = 'A3:IV';  // encabezados en la fila 3
+    const GID = '0';           // pestaña principal
+    const RANGE_A1 = 'A2:IV';  // incluye fila 2 y fila 3 para construir doble encabezado
 
-    google.charts.load('current', { packages: ['table','controls'] });
-    google.charts.setOnLoadCallback(draw);
+    // Auto‑refresco (en segundos). Pon 0 para desactivar.
+    const AUTO_REFRESH_SECONDS = 60;
 
-    function getParam(name){
-      const url = new URL(window.location.href);
-      return url.searchParams.get(name);
+    google.charts.load('current', { packages: ['table'] }); // cargamos la lib para usar su Query/DataTable
+    google.charts.setOnLoadCallback(init);
+
+    function init(){
+      draw();
+      if (AUTO_REFRESH_SECONDS > 0) {
+        setInterval(draw, AUTO_REFRESH_SECONDS * 1000);
+      }
+      document.getElementById('btnRefresh').onclick = draw;
+      document.getElementById('btnClear').onclick = () => {
+        document.getElementById('fNombre').value = '';
+        applyFilter();
+      };
+      document.getElementById('fNombre').oninput = applyFilter;
     }
 
-    function draw() {
-      // URL GViz: consulta al Sheet (pestaña por gid y rango A1)
+    // Utilidad para leer ?nombre=... y precargar filtro exacto
+    function getParam(name){ return new URL(location.href).searchParams.get(name); }
+
+    // Variables de datos
+    let dataTable = null;    // DataTable completa (desde fila 2)
+    let colIdxNombre = -1;   // índice de "Nombres y Apellidos" (fila 3)
+    let r2 = [];             // valores de la fila 2 (encabezado visual)
+    let r3 = [];             // valores de la fila 3 (etiquetas reales)
+
+    function draw(){
+      document.getElementById('err').textContent = '';
       const base = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq`;
-      const params = new URLSearchParams({ gid: GID, range: RANGE_A1 });
+      // Añadimos parámetros (gid, rango) + anti‑cache
+      const params = new URLSearchParams({ gid: GID, range: RANGE_A1, _ts: Date.now().toString() });
       const url = `${base}?${params.toString()}`;
 
       const q = new google.visualization.Query(url);
       q.send(resp => {
         if (resp.isError()) {
-          const msg = `Error en la consulta: ${resp.getMessage()} - ${resp.getDetailedMessage()}`;
-          console.error(msg); document.getElementById('err').textContent = msg; return;
-        }
-        const data = resp.getDataTable();
-
-        // Localiza la columna "Nombres y Apellidos" por etiqueta
-        let colNombre = -1;
-        for (let i=0;i<data.getNumberOfColumns();i++){
-          if ((data.getColumnLabel(i) || '').trim().toLowerCase() === 'nombres y apellidos'){
-            colNombre = i; break;
-          }
-        }
-        if (colNombre === -1){
-          document.getElementById('err').textContent =
-            'No se encontró la columna "Nombres y Apellidos" en los encabezados.';
+          const msg = `Error leyendo la hoja: ${resp.getMessage()} – ${resp.getDetailedMessage()}`;
+          document.getElementById('err').textContent = msg;
+          console.error(msg);
           return;
         }
+        dataTable = resp.getDataTable(); // DataTable incluye fila 2 como primera fila y fila 3 como segunda fila
+        // Tomamos fila 2 y fila 3
+        r2 = getRowValues(dataTable, 0);
+        r3 = getRowValues(dataTable, 1);
 
-        // Control de filtro (CategoryFilter) con caja de búsqueda
-        const filtroNombre = new google.visualization.ControlWrapper({
-          controlType: 'CategoryFilter',
-          containerId: 'f_nombre',
-          options: {
-            filterColumnIndex: colNombre,
-            ui: { label: 'Filtrar por Nombres y Apellidos', allowTyping: true, allowMultiple: true, caption: 'Todos' }
-          }
-        });
+        // Asignamos etiquetas de columnas con los valores de la fila 3
+        for (let c = 0; c < dataTable.getNumberOfColumns(); c++) {
+          dataTable.setColumnLabel(c, String(r3[c] ?? ''));
+        }
 
-        // Tabla
-        const tabla = new google.visualization.ChartWrapper({
-          chartType: 'Table',
-          containerId: 'tbl',
-          options: {
-            showRowNumber: true, width: '100%', height: '100%',
-            alternatingRowStyle: true, sort: 'enable'
-          }
-        });
+        // Localizamos columna "Nombres y Apellidos" (insensible a mayúsculas)
+        colIdxNombre = findColIndexByLabel(dataTable, 'nombres y apellidos');
 
-        // Dashboard: vincula control → tabla
-        const dash = new google.visualization.Dashboard(document.getElementById('dash'));
-        dash.bind([filtroNombre], [tabla]);
+        // Rellenamos el selector con valores únicos
+        fillNamesSelect();
 
-        // Precarga por URL ?nombre=...
-        const nombreURL = getParam('nombre'); // ej.: ?nombre=John%20Edgar...
-        if (nombreURL) filtroNombre.setState({ selectedValues: [nombreURL] });
+        // Precargar filtro por ?nombre=
+        const nombreURL = getParam('nombre');
+        if (nombreURL) {
+          document.getElementById('fNombre').value = nombreURL;
+        }
 
-        dash.draw(data);
+        // Render completo
+        renderTable();
 
-        // Botón “Limpiar filtros”
-        document.getElementById('clear').onclick = () => {
-          filtroNombre.setState({ selectedValues: [] });
-          dash.draw(data);
-          history.replaceState(null, '', location.pathname);
-        };
+        // Ajuste dinámico de top para doble cabecera sticky
+        adjustStickyHeaderOffsets();
       });
+    }
+
+    function getRowValues(dt, rowIndex){
+      const arr = [];
+      for (let c=0; c<dt.getNumberOfColumns(); c++){
+        const v = dt.getValue(rowIndex, c);
+        arr.push(v == null ? '' : v);
+      }
+      return arr;
+    }
+
+    function findColIndexByLabel(dt, labelLower){
+      for (let c=0; c<dt.getNumberOfColumns(); c++){
+        if ((dt.getColumnLabel(c) || '').trim().toLowerCase() === labelLower) return c;
+      }
+      return -1;
+    }
+
+    function fillNamesSelect(){
+      const sel = document.getElementById('fNombre');
+      const list = document.getElementById('listNombres');
+      sel.value = '';
+      list.innerHTML = '';
+      if (colIdxNombre === -1) return;
+
+      const uniques = new Set();
+      // Recorremos filas de datos reales (desde índice 2 en adelante)
+      for (let r=2; r<dataTable.getNumberOfRows(); r++){
+        const v = dataTable.getValue(r, colIdxNombre);
+        if (v != null && String(v).trim() !== '') uniques.add(String(v));
+      }
+      // Orden alfabético
+      const arr = Array.from(uniques).sort((a,b)=>a.localeCompare(b,'es'));
+      for (const name of arr){
+        const opt = document.createElement('option');
+        opt.value = name;
+        list.appendChild(opt);
+      }
+    }
+
+    function renderTable(){
+      const container = document.getElementById('tblWrap');
+      container.innerHTML = '';
+
+      // Construimos <table>
+      const table = document.createElement('table');
+
+      // THEAD con 2 filas (fila 2 y fila 3)
+      const thead = document.createElement('thead');
+      const tr1 = document.createElement('tr');
+      const tr2 = document.createElement('tr');
+
+      const colCount = dataTable.getNumberOfColumns();
+      for (let c=0; c<colCount; c++){
+        const th1 = document.createElement('th');
+        const th2 = document.createElement('th');
+
+        th1.textContent = r2[c] ?? '';
+        th2.textContent = dataTable.getColumnLabel(c) ?? '';
+
+        // widths fijos para col 1–3
+        if (c===0) { th1.classList.add('w-col1','sticky-1'); th2.classList.add('w-col1','sticky-1'); }
+        if (c===1) { th1.classList.add('w-col2','sticky-2'); th2.classList.add('w-col2','sticky-2'); }
+        if (c===2) { th1.classList.add('w-col3','sticky-3'); th2.classList.add('w-col3','sticky-3'); }
+
+        tr1.appendChild(th1); tr2.appendChild(th2);
+      }
+      thead.appendChild(tr1); thead.appendChild(tr2);
+      table.appendChild(thead);
+
+      // TBODY (desde fila índice 2 en adelante)
+      const tbody = document.createElement('tbody');
+      const filtro = (document.getElementById('fNombre').value || '').trim();
+
+      for (let r=2; r<dataTable.getNumberOfRows(); r++){
+        // Aplica filtro exacto por “Nombres y Apellidos” si está definido
+        if (filtro && colIdxNombre !== -1) {
+          const v = String(dataTable.getValue(r, colIdxNombre) ?? '');
+          if (v !== filtro) continue;
+        }
+        const tr = document.createElement('tr');
+        for (let c=0; c<colCount; c++){
+          const td = document.createElement('td');
+          const v = dataTable.getValue(r, c);
+          td.textContent = v == null ? '' : v;
+
+          // widths + columnas sticky (1–3)
+          if (c===0) td.classList.add('w-col1','sticky-1');
+          if (c===1) td.classList.add('w-col2','sticky-2');
+          if (c===2) td.classList.add('w-col3','sticky-3');
+
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      container.appendChild(table);
+
+      // “Congelar” también la primera fila de datos (fila 1,2,3 en tu hoja)
+      freezeFirstDataRow(container);
+    }
+
+    // Ajusta offsets para 2 filas de cabecera sticky (según alturas reales)
+    function adjustStickyHeaderOffsets(){
+      const thead = document.querySelector('thead');
+      if (!thead) return;
+      const rows = thead.querySelectorAll('tr');
+      if (rows.length < 2) return;
+      const h1 = rows[0].getBoundingClientRect().height;
+      const h2 = rows[1].getBoundingClientRect().height;
+      document.documentElement.style.setProperty('--headRow1H', `${Math.round(h1)}px`);
+      document.documentElement.style.setProperty('--headRow2H', `${Math.round(h2)}px`);
+    }
+
+    // “Congelar” la primera fila de datos (fila 4 real) usando sticky top adicional
+    function freezeFirstDataRow(container){
+      const theadH = (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--headRow1H'))||36)
+                   + (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--headRow2H'))||36);
+      const firstRow = container.querySelector('tbody tr');
+      if (!firstRow) return;
+      // Para fijar la fila completa, clonamos como una pseudo-cabecera adicional
+      // Alternativa simple: marcar esa fila como sticky con top = theadH
+      firstRow.querySelectorAll('td').forEach(td=>{
+        td.style.position='sticky';
+        td.style.top = theadH + 'px';
+        td.style.zIndex = 1;
+        td.style.background = '#fff';
+        td.style.fontWeight = '600';
+      });
+    }
+
+    function applyFilter(){
+      renderTable();
+      adjustStickyHeaderOffsets();
     }
   </script>
 </head>
@@ -106,15 +263,20 @@
   <header><div class="wrap"><h1>Ranking Participantes — Interactivo (GitHub Pages)</h1></div></header>
   <main class="wrap">
     <div class="panel">
-      <div class="filters">
-        <div id="f_nombre" class="block"></div>
-        <a id="clear" class="btn" href="javascript:void(0)">Limpiar filtros</a>
+      <div class="toolbar">
+        <div class="field">
+          <label for="fNombre"><strong>Filtrar por “Nombres y Apellidos”:</strong></label>
+          <input id="fNombre" list="listNombres" placeholder="Escribe y elige un nombre…" />
+          <datalist id="listNombres"></datalist>
+        </div>
+        <button id="btnClear" title="Borrar filtro">Limpiar</button>
+        <button id="btnRefresh" title="Volver a consultar la hoja">Actualizar</button>
       </div>
-      <div id="dash"><div id="tbl"></div></div>
-      <p id="err" class="hint"></p>
-      <p class="hint">Tip: agrega <code>?nombre=John%20Edgar%20Chac%C3%B3n%20Contreras</code> al final de la URL para abrir ya filtrado.</p>
+
+      <div class="table-wrap" id="tblWrap"></div>
+      <p id="err" class="muted"></p>
+      <p class="muted">La página consulta tu Google Sheet en vivo usando la Visualization API (endpoint <code>gviz/tq</code>). Cualquier cambio en la hoja se reflejará al recargar o en el auto‑refresco configurado.</p>
     </div>
   </main>
 </body>
 </html>
-``
