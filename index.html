@@ -171,3 +171,36 @@
         for (let c=0;c<cols;c++){
           const td=document.createElement('td');
           const v = dataTable.getValue(r,c);
+          td.textContent = v==null ? '' : v;
+
+          if (c===0) td.classList.add('sticky-1');
+          if (c===1) td.classList.add('sticky-2');
+          if (c===2) td.classList.add('sticky-3');
+
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+
+      // Calcular alturas reales de cabeceras para “top” sticky
+      const h1 = tr1.getBoundingClientRect().height;
+      const h2 = tr2.getBoundingClientRect().height;
+      document.documentElement.style.setProperty('--head1', `${Math.round(h1)}px`);
+      document.documentElement.style.setProperty('--head2', `${Math.round(h2)}px`);
+
+      // Marcar la primera fila de datos como “congelada”
+      const firstDataRow = wrap.querySelector('tbody tr');
+      if (firstDataRow) firstDataRow.classList.add('freeze-row');
+
+      // Calcular offsets left para col 1–2 (para sticky correcto)
+      const ths = tr2.querySelectorAll('th');
+      const left1 = ths[0]?.getBoundingClientRect().width || 0;
+      const left2 = ths[1]?.getBoundingClientRect().width || 0;
+      document.documentElement.style.setProperty('--left1', left1+'px');
+      document.documentElement.style.setProperty('--left2', left2+'px');
+    }
+  </script>
+</body>
+</html>
