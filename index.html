@@ -2,22 +2,30 @@
 <html lang="es">
 <head>
   <meta charset="utf-8"/>
-  <title>Visual - Hoja tal cual con filtro por nombre</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  https://www.gstatic.com/charts/loader.js</script>
+  <title>Visual - Hoja tal cual con filtro por nombre</title>
+
+  <!-- Cargar Google Charts correctamente -->
+  <script src="https://www.gstatic.com/charts/loader.js"></script>
+
   <style>
-    /* Contenedor y barra del buscador */
+    /* Barra con el buscador */
     body{margin:0}
-    .toolbar{padding:8px; border-bottom:1px solid #ddd; display:flex; gap:8px; align-items:center; font:14px system-ui,-apple-system,Segoe UI,Roboto}
+    .toolbar{
+      padding:8px; border-bottom:1px solid #ddd;
+      display:flex; gap:8px; align-items:center;
+      font:14px system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;
+    }
     .toolbar label{font-weight:600}
     .toolbar select{padding:6px 8px}
 
- 48px); overflow:auto}    /* Tabla y scroll */
+    /* Área de tabla con scroll */
+    .table-wrap{height:calc(100vh - 48px); overflow:auto}
     table{border-collapse:separate; border-spacing:0; width:max-content; min-width:100%}
     th,td{border-right:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb; padding:6px 8px; background:#fff; white-space:nowrap}
     tbody tr:nth-child(odd) td{background:#fafafa}
 
-    /* Cabeceras (fila 2 y fila 3 de tu hoja) “congeladas” */
+    /* Cabeceras (fila 2 y fila 3 de la hoja) “congeladas” */
     thead th{position:sticky; z-index:3; background:#eef2ff}
     thead tr:first-child th{top:0; font-weight:700}
     thead tr:nth-child(2) th{top:var(--head1,36px); font-weight:700; background:#dbeafe}
@@ -27,15 +35,30 @@
     .sticky-2{position:sticky; left:var(--left1,0px); z-index:2; background:#fff}
     .sticky-3{position:sticky; left:calc(var(--left1,0px) + var(--left2,0px)); z-index:2; background:#fff}
 
-    /* Fila 1 de datos (tu fila 4) también “congelada” bajo las cabeceras */
-    .freeze-row td{position:sticky; top:calc(var(--head1,36px) + var(--head2,36px)); z-index:1; background:#fff; font-weight:600}
+    /* Fila 1 de datos (fila 4 de Sheet) “congelada” bajo cabeceras */
+    .freeze-row td{
+      position:sticky; top:calc(var(--head1,36px) + var(--head2,36px));
+      z-index:1; background:#fff; font-weight:600
+    }
   </style>
+</head>
+<body>
+  <!-- ÚNICO buscador solicitado -->
+  <div class="toolbar">
+    <label for="sel">Nombres y Apellidos:</label>
+    <select id="sel">
+      <option value="">— Todos —</option>
+    </select>
+  </div>
+
+  <!-- Contenedor de la tabla -->
+  <div class="table-wrap" id="wrap"></div>
 
   <script>
     // ===== Config de tu hoja =====
     const SHEET_ID = '1jIAWPSvoUZom0e2kLc3gEtaEAbW_I_bRmAeWn2n-5LI';
     const GID      = '0';     // pestaña
-    const RANGE_A1 = 'A2:IV'; // incluye fila 2 y 3 para construir doble cabecera
+    const RANGE_A1 = 'A2:IV'; // incluye fila 2 y 3 para doble cabecera
 
     google.charts.load('current', { packages:['table'] });
     google.charts.setOnLoadCallback(draw);
@@ -46,30 +69,29 @@
 
     function draw(){
       const base   = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq`;
-      const params = new URLSearchParams({ gid: GID, range: RANGE_A1, _ts: Date.now().toString() });
+      const params = new URLSearchParams({ gid: GID, range: RANGE_A1, _ts: Date.now().toString() }); // _ts anti-cache
       const url    = `${base}?${params.toString()}`;
 
       const q = new google.visualization.Query(url);
       q.send(resp => {
         if (resp.isError()){
-          document.getElementById('err')?.remove();
-          const p = document.createElement('p'); p.id='err';
-          p.textContent = `Error: ${resp.getMessage()} – ${resp.getDetailedMessage()}`;
-          document.body.prepend(p);
+          console.error('GViz error:', resp.getMessage(), resp.getDetailedMessage());
           return;
         }
         dataTable = resp.getDataTable();
 
-        // Tomar fila 2 (índice 0) y fila 3 (índice 1)
+        // Fila 2 (índice 0) y fila 3 (índice 1)
         r2 = getRow(0); r3 = getRow(1);
+
         // Etiquetas de columnas = fila 3
         for (let c=0;c<dataTable.getNumberOfColumns();c++){
           dataTable.setColumnLabel(c, String(r3[c] ?? ''));
         }
+
         // Índice de "Nombres y Apellidos"
         colIdxNombre = findCol('nombres y apellidos');
 
-        // Poblar select con valores únicos
+        // Llenar select con valores únicos
         fillSelect();
 
         // Render inicial
@@ -122,6 +144,7 @@
 
       const cols = dataTable.getNumberOfColumns();
 
+      // Construir dos filas de encabezado (fila 2 y fila 3 de tu hoja)
       for (let c=0;c<cols;c++){
         const th1=document.createElement('th'); th1.textContent=r2[c] ?? '';
         const th2=document.createElement('th'); th2.textContent=dataTable.getColumnLabel(c) ?? '';
@@ -135,59 +158,16 @@
       thead.appendChild(tr1); thead.appendChild(tr2);
       table.appendChild(thead);
 
-      const tbody=document.createElement('tbody');
+      // Filtrado por selección (trae SOLO esa fila)
       const filtro = (document.getElementById('sel').value || '').trim();
 
+      const tbody=document.createElement('tbody');
       for (let r=2;r<dataTable.getNumberOfRows();r++){
         if (filtro && colIdxNombre!==-1){
           const v = String(dataTable.getValue(r, colIdxNombre) ?? '');
-          if (v !== filtro) continue; // mostrar solo esa fila
+          if (v !== filtro) continue;
         }
         const tr=document.createElement('tr');
         for (let c=0;c<cols;c++){
           const td=document.createElement('td');
           const v = dataTable.getValue(r,c);
-          td.textContent = v==null ? '' : v;
-
-          if (c===0) td.classList.add('sticky-1');
-          if (c===1) td.classList.add('sticky-2');
-          if (c===2) td.classList.add('sticky-3');
-
-          tr.appendChild(td);
-        }
-        tbody.appendChild(tr);
-      }
-      table.appendChild(tbody);
-      wrap.appendChild(table);
-
-      // Calcular alturas de cabeceras (para sticky de la primera fila de datos)
-      const thTop = tr1.getBoundingClientRect().height;
-      const th2Top = tr2.getBoundingClientRect().height;
-      document.documentElement.style.setProperty('--head1', `${Math.round(thTop)}px`);
-      document.documentElement.style.setProperty('--head2', `${Math.round(th2Top)}px`);
-
-      // Marcar la primera fila de datos como "freeze-row"
-      const firstDataRow = wrap.querySelector('tbody tr');
-      if (firstDataRow) firstDataRow.classList.add('freeze-row');
-
-      // Calcular offsets left reales para col 1–2–3
-      // (para que el sticky respete anchos actuales)
-      const ths = tr2.querySelectorAll('th');
-      const left1 = ths[0]?.getBoundingClientRect().width || 0;
-      const left2 = ths[1]?.getBoundingClientRect().width || 0;
-      document.documentElement.style.setProperty('--left1', left1+'px');
-      document.documentElement.style.setProperty('--left2', left2+'px');
-    }
-  </script>
-</head>
-<body>
-  <div class="toolbar">
-    <label for="sel">Nombres y Apellidos:</label>
-    <select id="sel">
-      <option value="">— Todos —</option>
-    </select>
-  </div>
-
-  <div class="table-wrap" id="wrap"></div>
-</body>
-</html>
