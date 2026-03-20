@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Visual - Hoja tal cual con filtro por nombre</title>
+  <title>Hoja tal cual + filtro por nombre</title>
 
-  <!-- Cargar Google Charts correctamente -->
+  <!-- Cargar Google Charts -->
   <script src="https://www.gstatic.com/charts/loader.js"></script>
 
   <style>
-    /* Barra con el buscador */
+    /* Barra con el buscador (sin cambiar tema de la hoja) */
     body{margin:0}
     .toolbar{
       padding:8px; border-bottom:1px solid #ddd;
@@ -23,27 +23,27 @@
     .table-wrap{height:calc(100vh - 48px); overflow:auto}
     table{border-collapse:separate; border-spacing:0; width:max-content; min-width:100%}
     th,td{border-right:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb; padding:6px 8px; background:#fff; white-space:nowrap}
-    tbody tr:nth-child(odd) td{background:#fafafa}
 
-    /* Cabeceras (fila 2 y fila 3 de la hoja) “congeladas” */
-    thead th{position:sticky; z-index:3; background:#eef2ff}
-    thead tr:first-child th{top:0; font-weight:700}
-    thead tr:nth-child(2) th{top:var(--head1,36px); font-weight:700; background:#dbeafe}
-
-    /* Columnas 1–3 “congeladas” (izquierda) */
-    .sticky-1{position:sticky; left:0; z-index:2; background:#fff}
-    .sticky-2{position:sticky; left:var(--left1,0px); z-index:2; background:#fff}
-    .sticky-3{position:sticky; left:calc(var(--left1,0px) + var(--left2,0px)); z-index:2; background:#fff}
-
-    /* Fila 1 de datos (fila 4 de Sheet) “congelada” bajo cabeceras */
+    /* === Inmovilizador EXACTO: filas 1–3 fijas === */
+    thead th{position:sticky; z-index:3; background:#fff}
+    thead tr:first-child th{top:0}
+    thead tr:nth-child(2) th{top:var(--h1,36px)}            /* fila 2 */
+    /* fila 3 de datos “congelada” bajo el thead (scroll desde la 4ª) */
     .freeze-row td{
-      position:sticky; top:calc(var(--head1,36px) + var(--head2,36px));
-      z-index:1; background:#fff; font-weight:600
+      position:sticky;
+      top:calc(var(--h1,36px) + var(--h2,36px));
+      z-index:1; background:#fff
     }
+
+    /* === Inmovilizador EXACTO: columnas 1–3 fijas === */
+    .stick-1{position:sticky; left:0; z-index:2; background:#fff}
+    .stick-2{position:sticky; left:var(--l1,0px); z-index:2; background:#fff}
+    .stick-3{position:sticky; left:calc(var(--l1,0px) + var(--l2,0px)); z-index:2; background:#fff}
   </style>
 </head>
 <body>
-  <!-- ÚNICO buscador solicitado -->
+
+  <!-- ÚNICO buscador requerido -->
   <div class="toolbar">
     <label for="sel">Nombres y Apellidos:</label>
     <select id="sel">
@@ -55,151 +55,123 @@
   <div class="table-wrap" id="wrap"></div>
 
   <script>
-    // ===== Config de tu hoja =====
+    /* ========= Config de TU hoja ========= */
     const SHEET_ID = '1jIAWPSvoUZom0e2kLc3gEtaEAbW_I_bRmAeWn2n-5LI';
     const GID      = '0';     // pestaña
-    const RANGE_A1 = 'A2:IV'; // incluye fila 2 y 3 para doble cabecera
+    const RANGE_A1 = 'A2:IV'; // incluye fila 2 y 3 (dos cabeceras)
 
     google.charts.load('current', { packages:['table'] });
-    google.charts.setOnLoadCallback(draw);
+    google.charts.setOnLoadCallback(loadData);
 
-    let dataTable = null;
-    let r2 = [], r3 = [];      // fila 2 (encabezado visual) y fila 3 (etiquetas)
-    let colIdxNombre = -1;
+    let dt=null, head2=[], head3=[], idxNombre=-1;
 
-    function draw(){
-      const base   = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq`;
-      const params = new URLSearchParams({ gid: GID, range: RANGE_A1, _ts: Date.now().toString() }); // _ts anti-cache
-      const url    = `${base}?${params.toString()}`;
-
+    function loadData(){
+      const base = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq`;
+      const url  = `${base}?${new URLSearchParams({gid:GID, range:RANGE_A1, _ts:Date.now()})}`;
       const q = new google.visualization.Query(url);
-      q.send(resp => {
-        if (resp.isError()){
-          console.error('GViz error:', resp.getMessage(), resp.getDetailedMessage());
-          return;
+      q.send(res=>{
+        if(res.isError()){ console.error(res.getMessage(), res.getDetailedMessage()); return; }
+
+        dt = res.getDataTable();           // fila 2 => index 0, fila 3 => index 1
+        head2 = getRow(0); head3 = getRow(1);
+
+        // Etiquetas = fila 3 (no cambiamos estilo)
+        for(let c=0;c<dt.getNumberOfColumns();c++){
+          dt.setColumnLabel(c, String(head3[c] ?? ''));
         }
-        dataTable = resp.getDataTable();
+        idxNombre = findCol('nombres y apellidos');
 
-        // Fila 2 (índice 0) y fila 3 (índice 1)
-        r2 = getRow(0); r3 = getRow(1);
-
-        // Etiquetas de columnas = fila 3
-        for (let c=0;c<dataTable.getNumberOfColumns();c++){
-          dataTable.setColumnLabel(c, String(r3[c] ?? ''));
-        }
-
-        // Índice de "Nombres y Apellidos"
-        colIdxNombre = findCol('nombres y apellidos');
-
-        // Llenar select con valores únicos
-        fillSelect();
-
-        // Render inicial
-        render();
+        fillSelect();   // cargar nombres en lista
+        render();       // primera pinta
       });
     }
 
-    function getRow(idx){
-      const arr = [];
-      for (let c=0;c<dataTable.getNumberOfColumns();c++){
-        arr.push(dataTable.getValue(idx,c) ?? '');
-      }
-      return arr;
+    function getRow(i){
+      const a=[]; for(let c=0;c<dt.getNumberOfColumns();c++) a.push(dt.getValue(i,c) ?? '');
+      return a;
     }
-    function findCol(labelLower){
-      for (let c=0;c<dataTable.getNumberOfColumns();c++){
-        if ((dataTable.getColumnLabel(c)||'').trim().toLowerCase() === labelLower) return c;
+    function findCol(lblLower){
+      for(let c=0;c<dt.getNumberOfColumns();c++){
+        if((dt.getColumnLabel(c)||'').trim().toLowerCase()===lblLower) return c;
       }
       return -1;
     }
 
     function fillSelect(){
-      const sel = document.getElementById('sel');
-      sel.innerHTML = '';
-      const optAll = document.createElement('option');
-      optAll.value=''; optAll.textContent='— Todos —';
-      sel.appendChild(optAll);
+      const sel=document.getElementById('sel');
+      sel.innerHTML=''; const opt=document.createElement('option');
+      opt.value=''; opt.textContent='— Todos —'; sel.appendChild(opt);
 
-      if (colIdxNombre === -1) return;
-      const set = new Set();
-      for (let r=2;r<dataTable.getNumberOfRows();r++){
-        const v = dataTable.getValue(r, colIdxNombre);
-        if (v!=null && String(v).trim()!=='') set.add(String(v));
+      if(idxNombre===-1) return;
+      const set=new Set();
+      for(let r=2;r<dt.getNumberOfRows();r++){
+        const v=dt.getValue(r, idxNombre); if(v!=null && String(v).trim()!=='') set.add(String(v));
       }
-      const arr = Array.from(set).sort((a,b)=>a.localeCompare(b,'es'));
-      for (const name of arr){
-        const o=document.createElement('option'); o.value=name; o.textContent=name; sel.appendChild(o);
-      }
+      Array.from(set).sort((a,b)=>a.localeCompare(b,'es'))
+        .forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); });
       sel.onchange = render;
     }
 
     function render(){
-      const wrap = document.getElementById('wrap');
-      wrap.innerHTML = '';
+      const target=document.getElementById('wrap'); target.innerHTML='';
+      const tbl=document.createElement('table');
+      const thead=document.createElement('thead'); const tr1=document.createElement('tr'); const tr2=document.createElement('tr');
+      const cols=dt.getNumberOfColumns();
 
-      const table = document.createElement('table');
-      const thead = document.createElement('thead');
-      const tr1 = document.createElement('tr');
-      const tr2 = document.createElement('tr');
+      // Cabeceras (filas 1–2 de thead) -> equivalen a FILA 2 y FILA 3 de la hoja
+      for(let c=0;c<cols;c++){
+        const th1=document.createElement('th'); th1.textContent=head2[c] ?? '';
+        const th2=document.createElement('th'); th2.textContent=dt.getColumnLabel(c) ?? '';
 
-      const cols = dataTable.getNumberOfColumns();
-
-      // Construir dos filas de encabezado (fila 2 y fila 3 de tu hoja)
-      for (let c=0;c<cols;c++){
-        const th1=document.createElement('th'); th1.textContent=r2[c] ?? '';
-        const th2=document.createElement('th'); th2.textContent=dataTable.getColumnLabel(c) ?? '';
-
-        if (c===0){ th1.classList.add('sticky-1'); th2.classList.add('sticky-1'); }
-        if (c===1){ th1.classList.add('sticky-2'); th2.classList.add('sticky-2'); }
-        if (c===2){ th1.classList.add('sticky-3'); th2.classList.add('sticky-3'); }
+        // columnas 1–3 fijas
+        if(c===0){ th1.classList.add('stick-1'); th2.classList.add('stick-1'); }
+        if(c===1){ th1.classList.add('stick-2'); th2.classList.add('stick-2'); }
+        if(c===2){ th1.classList.add('stick-3'); th2.classList.add('stick-3'); }
 
         tr1.appendChild(th1); tr2.appendChild(th2);
       }
-      thead.appendChild(tr1); thead.appendChild(tr2);
-      table.appendChild(thead);
-
-      // Filtrado por selección (trae SOLO esa fila)
-      const filtro = (document.getElementById('sel').value || '').trim();
+      thead.appendChild(tr1); thead.appendChild(tr2); tbl.appendChild(thead);
 
       const tbody=document.createElement('tbody');
-      for (let r=2;r<dataTable.getNumberOfRows();r++){
-        if (filtro && colIdxNombre!==-1){
-          const v = String(dataTable.getValue(r, colIdxNombre) ?? '');
-          if (v !== filtro) continue;
+      const filtro=(document.getElementById('sel').value||'').trim();
+
+      for(let r=2;r<dt.getNumberOfRows();r++){
+        if(filtro && idxNombre!==-1){
+          const v=String(dt.getValue(r, idxNombre) ?? '');
+          if(v!==filtro) continue;                 // mostrar SOLO esa fila
         }
         const tr=document.createElement('tr');
-        for (let c=0;c<cols;c++){
+        for(let c=0;c<cols;c++){
           const td=document.createElement('td');
-          const v = dataTable.getValue(r,c);
-          td.textContent = v==null ? '' : v;
+          const v=dt.getValue(r,c); td.textContent=(v==null?'':v);
 
-          if (c===0) td.classList.add('sticky-1');
-          if (c===1) td.classList.add('sticky-2');
-          if (c===2) td.classList.add('sticky-3');
+          if(c===0) td.classList.add('stick-1');
+          if(c===1) td.classList.add('stick-2');
+          if(c===2) td.classList.add('stick-3');
 
           tr.appendChild(td);
         }
         tbody.appendChild(tr);
       }
-      table.appendChild(tbody);
-      wrap.appendChild(table);
+      tbl.appendChild(tbody);
+      target.appendChild(tbl);
 
-      // Calcular alturas reales de cabeceras para “top” sticky
+      /* Medir alturas reales de cabeceras para fijar top de la 3ª fila */
       const h1 = tr1.getBoundingClientRect().height;
       const h2 = tr2.getBoundingClientRect().height;
-      document.documentElement.style.setProperty('--head1', `${Math.round(h1)}px`);
-      document.documentElement.style.setProperty('--head2', `${Math.round(h2)}px`);
+      document.documentElement.style.setProperty('--h1', `${Math.round(h1)}px`);
+      document.documentElement.style.setProperty('--h2', `${Math.round(h2)}px`);
 
-      // Marcar la primera fila de datos como “congelada”
-      const firstDataRow = wrap.querySelector('tbody tr');
-      if (firstDataRow) firstDataRow.classList.add('freeze-row');
+      /* Marcar la PRIMERA fila de datos como 3ª fila fija (freeze en fila 3) */
+      const firstData = target.querySelector('tbody tr');
+      if(firstData) firstData.classList.add('freeze-row');
 
-      // Calcular offsets left para col 1–2 (para sticky correcto)
+      /* Calcular anchos reales de col 1 y 2 para fijar izquierda de 2–3 */
       const ths = tr2.querySelectorAll('th');
-      const left1 = ths[0]?.getBoundingClientRect().width || 0;
-      const left2 = ths[1]?.getBoundingClientRect().width || 0;
-      document.documentElement.style.setProperty('--left1', left1+'px');
-      document.documentElement.style.setProperty('--left2', left2+'px');
+      const l1 = ths[0]?.getBoundingClientRect().width || 0;
+      const l2 = ths[1]?.getBoundingClientRect().width || 0;
+      document.documentElement.style.setProperty('--l1', l1+'px');
+      document.documentElement.style.setProperty('--l2', l2+'px');
     }
   </script>
 </body>
